@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Datalyze</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2/plotly.min.js"></script>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Datalyze</span>
+      </div>
+      <div class="file-pill" id="file-pill" style="display:none">
+        <i class="icon-file"></i>
+        <span id="file-pill-name">No file loaded</span>
+        <button class="file-pill-close" id="clear-file" title="Remove file">×</button>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div id="health-dot" class="health-dot health-checking" title="Checking API..."></div>
+      <button class="btn-ghost" id="export-btn" disabled>Export report</button>
+      <button class="btn-accent" id="predict-btn" disabled>Run prediction</button>
+    </div>
+  </header>
+
+  <!-- Main layout -->
+  <div class="layout">
+
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="nav-section">
+        <button class="nav-item active" data-view="analysis">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18M7 16l4-4 4 4 4-4"/></svg>
+          Analysis
+        </button>
+        <button class="nav-item" data-view="predictions">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
+          Predictions
+        </button>
+        <button class="nav-item" data-view="notebooks">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Notebooks
+        </button>
+        <button class="nav-item" data-view="export">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+      </div>
+      <div class="nav-section nav-section--bottom">
+        <button class="nav-item" data-view="settings">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="main" id="main-content">
+
+      <!-- Upload view (default) -->
+      <div class="view view--active" id="view-upload">
+        <div class="upload-center">
+          <div class="upload-zone" id="upload-zone">
+            <div class="upload-zone-inner" id="upload-zone-inner">
+              <div class="upload-icon-wrap">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" class="upload-icon">
+                  <path d="M8 30v8a2 2 0 0 0 2 2h28a2 2 0 0 0 2-2v-8"/>
+                  <polyline points="16 16 24 8 32 16"/>
+                  <line x1="24" y1="8" x2="24" y2="30"/>
+                </svg>
+              </div>
+              <p class="upload-heading">Drop your dataset here</p>
+              <p class="upload-sub">CSV, Excel (.xlsx), or JSON · up to 50 MB</p>
+              <label class="btn-upload" for="file-input">Browse files</label>
+              <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.json" hidden />
+            </div>
+          </div>
+          <div class="upload-samples">
+            <span class="upload-samples-label">Try a sample dataset:</span>
+            <button class="sample-btn" data-sample="titanic">Titanic</button>
+            <button class="sample-btn" data-sample="superstore">Superstore Sales</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analysis view (shown after upload) -->
+      <div class="view" id="view-analysis">
+
+        <!-- Metric cards row -->
+        <div class="metric-row" id="metric-row">
+          <div class="metric-card skeleton" id="mc-rows">
+            <div class="metric-val" id="mc-rows-val">—</div>
+            <div class="metric-lbl">Rows</div>
+          </div>
+          <div class="metric-card skeleton" id="mc-cols">
+            <div class="metric-val" id="mc-cols-val">—</div>
+            <div class="metric-lbl">Columns</div>
+          </div>
+          <div class="metric-card skeleton" id="mc-quality">
+            <div class="metric-val" id="mc-quality-val">—</div>
+            <div class="metric-lbl">Data quality</div>
+          </div>
+          <div class="metric-card skeleton" id="mc-outliers">
+            <div class="metric-val" id="mc-outliers-val">—</div>
+            <div class="metric-lbl">Outliers</div>
+          </div>
+        </div>
+
+        <!-- Chat + right panel -->
+        <div class="analysis-grid">
+
+          <!-- Chat panel -->
+          <section class="chat-panel">
+            <div class="chat-thread" id="chat-thread">
+              <div class="chat-welcome">
+                <div class="welcome-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+                <p class="welcome-title">Ask anything about your data</p>
+                <p class="welcome-sub">Try: "What are the outliers?" · "Show survival by class" · "Which columns have nulls?"</p>
+              </div>
+            </div>
+            <div class="chat-input-row">
+              <input
+                type="text"
+                id="chat-input"
+                class="chat-input"
+                placeholder="Ask anything about your data…"
+                disabled
+                autocomplete="off"
+              />
+              <button class="chat-send" id="chat-send" disabled aria-label="Send message">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
+          </section>
+
+          <!-- Right panel -->
+          <aside class="right-panel">
+            <div class="rp-section">
+              <div class="rp-title">Activity</div>
+              <div class="activity-feed" id="activity-feed">
+                <div class="activity-empty">No activity yet</div>
+              </div>
+            </div>
+            <div class="rp-section" id="rp-prediction" style="display:none">
+              <div class="rp-title">Latest prediction</div>
+              <div class="prediction-card" id="prediction-card"></div>
+            </div>
+          </aside>
+
+        </div>
+      </div>
+
+      <!-- Notebooks view -->
+      <div class="view" id="view-notebooks">
+        <div class="placeholder-view">
+          <p class="placeholder-title">EDA Notebooks</p>
+          <p class="placeholder-sub">Available on Day 4 — Titanic EDA notebook</p>
+          <div class="notebook-links">
+            <a class="notebook-link" href="notebooks/titanic_eda.ipynb" target="_blank">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              titanic_eda.ipynb
+            </a>
+            <a class="notebook-link" href="notebooks/superstore_eda.ipynb" target="_blank">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              superstore_eda.ipynb
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Export view -->
+      <div class="view" id="view-export">
+        <div class="placeholder-view">
+          <p class="placeholder-title">Export</p>
+          <p class="placeholder-sub">Export your analysis as Markdown report or CSV summary — available on Day 14</p>
+          <div class="export-btns">
+            <button class="btn-ghost" disabled>Download report (.md)</button>
+            <button class="btn-ghost" disabled>Download summary (.csv)</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Predictions view -->
+      <div class="view" id="view-predictions">
+        <div class="placeholder-view">
+          <p class="placeholder-title">Predictions</p>
+          <p class="placeholder-sub">Logistic regression predictor — available on Day 7</p>
+        </div>
+      </div>
+
+      <!-- Settings view -->
+      <div class="view" id="view-settings">
+        <div class="placeholder-view">
+          <p class="placeholder-title">Settings</p>
+          <p class="placeholder-sub">API configuration and preferences</p>
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
