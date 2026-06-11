@@ -97,37 +97,126 @@ function setupUploadZone() {
     if (fileInput.files[0]) handleFile(fileInput.files[0]);
   });
 
-  document.querySelectorAll('.sample-btn').forEach(btn => {
-    btn.addEventListener('click', () => simulateLoad(`${btn.dataset.sample}_sample.csv`));
-  });
+  
 }
+document.querySelectorAll('.sample-btn').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const name = btn.dataset.sample;
+      showUploadLoading(true);
+      try {
+        const fileRes = await fetch(`/static/samples/${name}.csv`);
+        if (!fileRes.ok) throw new Error('Sample file not found. Add it to frontend/static/samples/');
+        const blob = await fileRes.blob();
+        const file = new File([blob], `${name}.csv`, { type: 'text/csv' });
+        await handleFile(file);
+      } catch (err) {
+        showUploadError(err.message);
+        showUploadLoading(false);
+      }
+    });
+  });
 
-function handleFile(file) {
+async function handleFile(file) {
   const ext = '.' + file.name.split('.').pop().toLowerCase();
   if (!['.csv','.xlsx','.xls','.json'].includes(ext)) {
     showUploadError(`Unsupported type: ${ext}. Use CSV, Excel, or JSON.`);
     return;
   }
-  /* Day 2: replace simulateLoad() with real POST /upload */
-  simulateLoad(file.name);
+
+  showUploadLoading(true);
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch(`${API_BASE}/upload`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Upload failed');
+    }
+
+    const data = await res.json();
+    onUploadSuccess(data);
+
+  } catch (err) {
+    showUploadError(err.message || 'Upload failed. Is the server running?');
+  } finally {
+    showUploadLoading(false);
+  }
 }
 
-function simulateLoad(fileName) {
-  state.fileName  = fileName;
+function onUploadSuccess(data) {
+  state.sessionId  = data.session_id;
+  state.fileName   = data.filename;
   state.fileLoaded = true;
 
-  filePillName.textContent = fileName;
+  filePillName.textContent = data.filename;
   filePill.style.display   = 'flex';
 
-  exportBtn.disabled = false;
+  exportBtn.disabled  = false;
   predictBtn.disabled = false;
   chatInput.disabled  = false;
   chatSend.disabled   = false;
 
   showView('analysis');
-  addActivity(`${fileName} loaded`, 'purple');
+
+  /* Update metric cards with REAL data */
+  updateMetricCards({
+    rows: data.profile.rows,
+    cols: data.profile.cols,
+    qualityGrade: data.profile.quality_grade,
+    outlierCount: '—',   // Day 6 will populate this
+  });
+
+  /* Log activity */
+  addActivity(`${data.filename} uploaded — ${data.profile.rows.toLocaleString()} rows, ${data.profile.cols} cols`, 'purple');
+
+  if (data.profile.duplicate_count > 0) {
+    addActivity(`${data.profile.duplicate_count} duplicate row(s) detected`, 'amber');
+  }
+  if (data.profile.total_nulls > 0) {
+    addActivity(`${data.profile.total_nulls} missing value(s) found`, 'amber');
+  } else {
+    addActivity('No missing values — dataset complete', 'teal');
+  }
+
+  /* Show insights as bot messages in chat */
+  chatThread.querySelector('.chat-welcome')?.remove();
+  showInsightsInChat(data.insights);
+
   fileInput.value = '';
 }
+
+function showInsightsInChat(insights) {
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  const insightLines = insights.map(i => `<div class="bubble-msg" style="margin-bottom:4px">${escHtml(i)}</div>`).join('');
+
+  bubble.innerHTML = `
+    <div class="bubble-avatar bubble-avatar--bot">DZ</div>
+    <div class="bubble-body" style="gap:4px">
+      ${insightLines}
+    </div>`;
+  chatThread.appendChild(bubble);
+  scrollChat();
+}
+
+function showUploadLoading(isLoading) {
+  const inner = document.getElementById('upload-zone-inner');
+  if (isLoading) {
+    inner.style.opacity = '0.5';
+    inner.style.pointerEvents = 'none';
+  } else {
+    inner.style.opacity = '1';
+    inner.style.pointerEvents = 'auto';
+  }
+}
+  
 
 function flashZone() {
   uploadZone.classList.add('drag-over');
