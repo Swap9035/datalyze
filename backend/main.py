@@ -6,7 +6,7 @@ import os
 import shutil
 import tempfile
 
-from backend import profiler, session_store
+from backend import profiler, session_store , cleaner
 
 app = FastAPI(title="Datalyze API", version="1.0.0")
 
@@ -109,4 +109,34 @@ def get_profile(session_id: str):
         "filename": session["filename"],
         "profile": profile,
         "insights": insights,
+    }
+
+@app.post("/clean/{session_id}")
+def clean_session_data(session_id: str):
+    """
+    Run the cleaning pipeline on the session's DataFrame,
+    store the cleaned version back in the session, and
+    return a before/after report.
+    """
+    session = session_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Session not found. Please re-upload your file.")
+
+    df_before = session["df"]
+    profile_before = profiler.profile_dataframe(df_before)
+
+    df_after, report = cleaner.clean_dataframe(df_before)
+
+    # Persist the cleaned DataFrame for downstream steps (Day 5+)
+    session_store.update_session_df(session_id, df_after)
+
+    profile_after = profiler.profile_dataframe(df_after)
+    summary_lines = cleaner.cleaning_summary_text(report)
+
+    return {
+        "session_id": session_id,
+        "report": report,
+        "summary": summary_lines,
+        "profile_before": profile_before,
+        "profile_after": profile_after,
     }
