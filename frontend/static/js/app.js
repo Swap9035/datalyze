@@ -149,7 +149,7 @@ async function handleFile(file) {
   }
 }
 
-function onUploadSuccess(data) {
+async function onUploadSuccess(data) {
   state.sessionId  = data.session_id;
   state.fileName   = data.filename;
   state.fileLoaded = true;
@@ -164,7 +164,7 @@ function onUploadSuccess(data) {
 
   showView('analysis');
 
-  /* Update metric cards with REAL data */
+  /* Initial metric cards from raw upload */
   updateMetricCards({
     rows: data.profile.rows,
     cols: data.profile.cols,
@@ -172,25 +172,92 @@ function onUploadSuccess(data) {
     outlierCount: '—',   // Day 6 will populate this
   });
 
-  /* Log activity */
   addActivity(`${data.filename} uploaded — ${data.profile.rows.toLocaleString()} rows, ${data.profile.cols} cols`, 'purple');
 
-  if (data.profile.duplicate_count > 0) {
-    addActivity(`${data.profile.duplicate_count} duplicate row(s) detected`, 'amber');
-  }
-  if (data.profile.total_nulls > 0) {
-    addActivity(`${data.profile.total_nulls} missing value(s) found`, 'amber');
-  } else {
-    addActivity('No missing values — dataset complete', 'teal');
-  }
-
-  /* Show insights as bot messages in chat */
   chatThread.querySelector('.chat-welcome')?.remove();
-  showInsightsInChat(data.insights);
+
+  /* ── Day 3: run cleaning pipeline automatically ── */
+  await runCleaningPipeline(data);
 
   fileInput.value = '';
 }
 
+async function runCleaningPipeline(uploadData) {
+  try {
+    const res = await fetch(`${API_BASE}/clean/${state.sessionId}`, { method: 'POST' });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Cleaning failed');
+    }
+    const data = await res.json();
+
+    /* Update metric cards with POST-CLEANING data */
+    updateMetricCards({
+      rows: data.profile_after.rows,
+      cols: data.profile_after.cols,
+      qualityGrade: data.profile_after.quality_grade,
+      outlierCount: '—',
+    });
+
+    /* Activity feed entries for each cleaning action */
+    const r = data.report;
+
+    if (r.cols_stripped.length > 0) {
+      addActivity(`Trimmed whitespace in ${r.cols_stripped.length} column(s)`, 'purple');
+    }
+    if (r.cols_coerced.length > 0) {
+      addActivity(`Converted ${r.cols_coerced.length} column(s) to numeric`, 'purple');
+    }
+    if (Object.keys(r.nulls_filled).length > 0) {
+      const totalFilled = Object.values(r.nulls_filled).reduce((a, b) => a + b, 0);
+      addActivity(`Filled ${totalFilled} missing value(s)`, 'teal');
+    } else {
+      addActivity('No missing values to fill', 'teal');
+    }
+    if (r.duplicates_removed > 0) {
+      addActivity(`Removed ${r.duplicates_removed} duplicate row(s)`, 'amber');
+    } else {
+      addActivity('No duplicate rows found', 'teal');
+    }
+
+    /* Show cleaning report as a bot message + insights from upload */
+    showCleaningReportInChat(data.summary, uploadData.insights);
+
+  } catch (err) {
+    addActivity(`Cleaning failed: ${err.message}`, 'red');
+    /* Still show original insights even if cleaning fails */
+    showInsightsInChat(uploadData.insights);
+  }
+}
+
+function showCleaningReportInChat(summaryLines, insightLines) {
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  const cleaningCard = `
+    <div class="insight-card">
+      <div class="insight-row">
+        <div class="insight-label">Data cleaning report</div>
+        ${summaryLines.map(l => `<div class="insight-text" style="margin-bottom:3px">${escHtml(l)}</div>`).join('')}
+      </div>
+    </div>`;
+
+  const insightLinesHtml = insightLines
+    .map(i => `<div class="bubble-msg" style="margin-bottom:4px">${escHtml(i)}</div>`)
+    .join('');
+
+  bubble.innerHTML = `
+    <div class="bubble-avatar bubble-avatar--bot">DZ</div>
+    <div class="bubble-body" style="gap:6px">
+      ${insightLinesHtml}
+      ${cleaningCard}
+    </div>`;
+
+  chatThread.appendChild(bubble);
+  scrollChat();
+}
+
+  
 function showInsightsInChat(insights) {
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
