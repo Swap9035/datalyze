@@ -23,6 +23,8 @@ const state = {
   fileName:    null,
   fileLoaded:  false,
   currentView: 'upload',
+  colStats:    null,   // populated Day 5 — deep per-column stats
+  llmContext:  null,   // populated Day 5 — pre-built text for LLM (Day 9)
 };
 
 /* ════════════════════════════════════════════
@@ -220,8 +222,12 @@ async function runCleaningPipeline(uploadData) {
       addActivity('No duplicate rows found', 'teal');
     }
 
+    
     /* Show cleaning report as a bot message + insights from upload */
     showCleaningReportInChat(data.summary, uploadData.insights);
+
+    /* Auto-fetch deep stats + cache LLM context for Day 9 */
+    await fetchAndCacheStats();
 
   } catch (err) {
     addActivity(`Cleaning failed: ${err.message}`, 'red');
@@ -512,3 +518,36 @@ function escHtml(s) {
 
   console.log('%cDatalyze Day 1 ready ✓', 'color:#7c6ef5;font-weight:600');
 })();
+
+async function fetchAndCacheStats() {
+  if (!state.sessionId) return;
+  try {
+    const res = await fetch(`${API_BASE}/stats/${state.sessionId}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    /* Store in state for use by chat (Day 9+) */
+    state.colStats   = data.col_stats;
+    state.llmContext = data.llm_context;
+
+    /* Count total outliers across all numeric columns */
+    const totalOutliers = Object.values(data.col_stats)
+      .filter(s => s.kind === 'numeric')
+      .reduce((sum, s) => sum + (s.outlier_count || 0), 0);
+
+    /* Update outlier metric card with real number */
+    updateMetricCards({
+      rows:         data.profile.rows,
+      cols:         data.profile.cols,
+      qualityGrade: data.profile.quality_grade,
+      outlierCount: totalOutliers,
+    });
+
+    if (totalOutliers > 0) {
+      addActivity(`${totalOutliers} outlier(s) detected across numeric columns`, 'red');
+    }
+
+  } catch (err) {
+    console.warn('Stats fetch failed:', err.message);
+  }
+}

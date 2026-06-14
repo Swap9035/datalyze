@@ -140,3 +140,31 @@ def clean_session_data(session_id: str):
         "profile_before": profile_before,
         "profile_after": profile_after,
     }
+
+@app.get("/stats/{session_id}")
+def get_column_stats(session_id: str):
+    """
+    Return deep per-column statistics for an existing session.
+    All computed by profiler.py — LLM will narrate these on Day 9.
+    """
+    session = session_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found. Please re-upload your file."
+        )
+
+    df      = session["df"]
+    profile = profiler.profile_dataframe(df)
+    stats   = profiler.compute_column_stats(df)
+    context = profiler.build_context_for_llm(df, profile, stats)
+
+    # Cache context string in session for fast LLM access on Day 9
+    session_store.get_session(session_id)["llm_context"] = context
+
+    return {
+        "session_id": session_id,
+        "profile":    profile,
+        "col_stats":  stats,
+        "llm_context": context,
+    }
