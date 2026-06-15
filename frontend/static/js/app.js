@@ -25,6 +25,7 @@ const state = {
   currentView: 'upload',
   colStats:    null,   // populated Day 5 — deep per-column stats
   llmContext:  null,   // populated Day 5 — pre-built text for LLM (Day 9)
+  outlierData: null    // populated Day 6 — outlier detection results
 };
 
 /* ════════════════════════════════════════════
@@ -547,7 +548,90 @@ async function fetchAndCacheStats() {
       addActivity(`${totalOutliers} outlier(s) detected across numeric columns`, 'red');
     }
 
+    await fetchOutlierReport();
+
+
   } catch (err) {
     console.warn('Stats fetch failed:', err.message);
   }
+}
+
+async function fetchOutlierReport() {
+  if (!state.sessionId) return;
+  try {
+    const res = await fetch(`${API_BASE}/outliers/${state.sessionId}`);
+    if (!res.ok) return;
+    const data = await res.json();
+
+    /* Cache for LLM context Day 9 */
+    state.outlierData = data;
+
+    /* Show outlier summary as insight card in chat */
+    if (data.summary && data.summary.length > 0) {
+      showOutlierCardInChat(data);
+    }
+
+  } catch (err) {
+    console.warn('Outlier fetch failed:', err.message);
+  }
+}
+
+function showOutlierCardInChat(data) {
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+
+  /* Build per-column breakdown for top 3 columns */
+  const topCols = Object.entries(data.iqr_results)
+    .sort((a, b) => b[1].outlier_count - a[1].outlier_count)
+    .slice(0, 3);
+
+  const colRows = topCols.map(([col, info]) => `
+    <div style="display:flex;justify-content:space-between;
+                padding:4px 0;border-bottom:0.5px solid rgba(245,101,101,.15);
+                font-size:11px">
+      <span style="color:#e8eaf0;font-weight:500">${escHtml(col)}</span>
+      <span style="color:#f56565">${info.outlier_count} outliers</span>
+      <span style="color:#5a6378">${info.high_count}↑ ${info.low_count}↓</span>
+      <span style="color:#5a6378">fence: ${info.lower_fence} – ${info.upper_fence}</span>
+    </div>`).join('');
+
+  /* Method comparison pills */
+  const compPills = data.comparison
+    .filter(c => c.iqr_count > 0 || c.zscore_count > 0)
+    .slice(0, 4)
+    .map(c => `
+      <div style="font-size:10px;padding:3px 8px;
+                  background:var(--surface-3);border:0.5px solid var(--border);
+                  border-radius:10px;color:var(--text-2)">
+        ${escHtml(c.column)}: IQR=${c.iqr_count} · Z=${c.zscore_count}
+        <span style="color:${c.agreement === 'high' ? 'var(--teal)' : 'var(--amber)'}">
+          (${c.agreement} agreement)
+        </span>
+      </div>`).join('');
+
+  bubble.innerHTML = `
+    <div class="bubble-avatar bubble-avatar--bot">DZ</div>
+    <div class="bubble-body" style="gap:6px">
+      <div class="insight-card insight-card--warn">
+        <div class="insight-row">
+          <div class="insight-label">Outlier Detection Report</div>
+          ${data.summary.map(l =>
+            `<div class="insight-text" style="margin-bottom:3px">${escHtml(l)}</div>`
+          ).join('')}
+        </div>
+        <div class="insight-row">
+          <div class="insight-label">Top columns by outlier count</div>
+          <div style="margin-top:4px">${colRows}</div>
+        </div>
+        <div class="insight-row">
+          <div class="insight-label">IQR vs Z-score comparison</div>
+          <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:5px">
+            ${compPills}
+          </div>
+        </div>
+      </div>
+    </div>`;
+
+  chatThread.appendChild(bubble);
+  scrollChat();
 }

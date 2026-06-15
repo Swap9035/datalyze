@@ -6,7 +6,7 @@ import os
 import shutil
 import tempfile
 
-from backend import profiler, session_store , cleaner
+from backend import profiler, session_store , cleaner , outlier_detector
 
 app = FastAPI(title="Datalyze API", version="1.0.0")
 
@@ -167,4 +167,35 @@ def get_column_stats(session_id: str):
         "profile":    profile,
         "col_stats":  stats,
         "llm_context": context,
+    }
+
+@app.get("/outliers/{session_id}")
+def get_outliers(session_id: str):
+    """
+    Run IQR + z-score outlier detection on the cleaned DataFrame.
+    Returns per-column results, comparison, and plain-English summary.
+    """
+    session = session_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found. Please re-upload your file."
+        )
+
+    df = session["df"]
+
+    iqr_results    = outlier_detector.detect_outliers_iqr(df)
+    zscore_results = outlier_detector.detect_outliers_zscore(df)
+    comparison     = outlier_detector.compare_methods(iqr_results, zscore_results)
+    summary        = outlier_detector.outlier_summary_text(iqr_results, zscore_results)
+
+    # Cache in session for LLM context on Day 9
+    session["outlier_summary"] = summary
+
+    return {
+        "session_id":    session_id,
+        "iqr_results":   iqr_results,
+        "zscore_results": zscore_results,
+        "comparison":    comparison,
+        "summary":       summary,
     }
