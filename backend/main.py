@@ -6,7 +6,7 @@ import os
 import shutil
 import tempfile
 
-from backend import profiler, session_store , cleaner , outlier_detector
+from backend import profiler, session_store , cleaner , outlier_detector , predictor
 
 app = FastAPI(title="Datalyze API", version="1.0.0")
 
@@ -199,3 +199,66 @@ def get_outliers(session_id: str):
         "comparison":    comparison,
         "summary":       summary,
     }
+
+@app.post("/train/{session_id}")
+def train_model(session_id: str):
+    """
+    Train a logistic regression model on the session's cleaned DataFrame.
+    Stores the trained model bundle in the session for /predict calls.
+    """
+    session = session_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found. Please re-upload your file."
+        )
+
+    df = session["df"]
+
+    try:
+        model_bundle = predictor.train_model(df)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Store model bundle — excludes sklearn objects for JSON response
+    session["model_bundle"] = model_bundle
+    summary = predictor.model_summary_text(model_bundle)
+
+    return {
+        "session_id":         session_id,
+        "target":             model_bundle["target"],
+        "train_size":         model_bundle["train_size"],
+        "test_size":          model_bundle["test_size"],
+        "metrics":            model_bundle["metrics"],
+        "confusion_matrix":   model_bundle["confusion_matrix"],
+        "feature_importance": model_bundle["feature_importance"],
+        "summary":            summary,
+    }
+
+
+@app.post("/predict/{session_id}")
+def predict(session_id: str, input_data: dict):
+    """
+    Predict survival for a single input row using the trained model.
+    Requires /train to have been called first.
+    """
+    session = session_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found. Please re-upload your file."
+        )
+
+    model_bundle = session.get("model_bundle")
+    if model_bundle is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Model not trained yet. Call POST /train/{session_id} first."
+        )
+
+    try:
+        result = predictor.predict_single(model_bundle, input_data)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    return result
