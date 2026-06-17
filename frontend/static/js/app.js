@@ -101,9 +101,7 @@ function setupUploadZone() {
     if (fileInput.files[0]) handleFile(fileInput.files[0]);
   });
 
-  
-}
-document.querySelectorAll('.sample-btn').forEach(btn => {
+  document.querySelectorAll('.sample-btn').forEach(btn => {
     btn.addEventListener('click', async () => {
       const name = btn.dataset.sample;
       showUploadLoading(true);
@@ -119,6 +117,7 @@ document.querySelectorAll('.sample-btn').forEach(btn => {
       }
     });
   });
+}
 
 async function handleFile(file) {
   const ext = '.' + file.name.split('.').pop().toLowerCase();
@@ -518,7 +517,7 @@ function escHtml(s) {
   checkHealth();
   setInterval(checkHealth, 30_000);
 
-  console.log('%cDatalyze Day 1 ready ✓', 'color:#7c6ef5;font-weight:600');
+  console.log('%cDatalyze Day 8 ready ✓', 'color:#7c6ef5;font-weight:600');
 })();
 
 async function fetchAndCacheStats() {

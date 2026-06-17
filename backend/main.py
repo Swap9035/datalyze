@@ -218,7 +218,19 @@ def train_model(session_id: str):
     try:
         model_bundle = predictor.train_model(df)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    # Return 200 with skipped=True instead of crashing
+    # so the frontend continues loading other features
+        return {
+            "session_id": session_id,
+            "skipped": True,
+            "reason": str(e),
+            "metrics": None,
+            "feature_importance": [],
+            "confusion_matrix": None,
+            "summary": [str(e)],
+            "train_size": 0,
+            "test_size": 0,
+        }
 
     # Store model bundle — excludes sklearn objects for JSON response
     session["model_bundle"] = model_bundle
