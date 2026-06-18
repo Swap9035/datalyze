@@ -6,7 +6,8 @@ import os
 import shutil
 import tempfile
 
-from backend import profiler, session_store , cleaner , outlier_detector , predictor
+from backend import profiler, session_store , cleaner , outlier_detector , predictor, llm, query_engine
+
 
 app = FastAPI(title="Datalyze API", version="1.0.0")
 
@@ -274,3 +275,100 @@ def predict(session_id: str, input_data: dict):
         raise HTTPException(status_code=400, detail=str(e))
 
     return result
+
+@app.post("/chat/{session_id}")
+def chat(session_id: str, body: dict):
+    """
+    Main chat endpoint.
+    Flow:
+      1. Load session context (pre-computed by Days 3-7)
+      2. Classify question type
+      3. Run pandas query if needed (your code)
+      4. Build prompt with pre-computed context
+      5. Ask Gemini to narrate (LLM as narrator, not analyst)
+      6. Return structured response: answer + optional chart + insight
+    """
+    session = session_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Session not found. Please re-upload your file."
+        )
+
+    question = body.get("question", "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Question cannot be empty.")
+
+    df             = session["df"]
+    llm_context    = session.get("llm_context", "")
+    outlier_sum    = session.get("outlier_summary", [])
+    model_bundle   = session.get("model_bundle")
+
+    model_sum = []
+    if model_bundle:
+        model_sum = predictor.model_summary_text(model_bundle)
+
+    # ── 1. Classify question ──────────────────────────────────
+    question_type = llm.classify_question(question)
+
+    # ── 2. Run pandas query (your code computes the data) ─────
+    query_result = None
+    chart_json   = None
+    chart_type   = None
+    method_label = None
+
+    columns = list(df.columns)
+
+    if question_type in ('stats', 'chart', 'general'):
+        action       = query_engine.parse_action_from_question(question, columns)
+        query_result = query_engine.run_query(df, action)
+        method_label = action.get("type", "query")
+
+    # ── 3. Build prompt with YOUR pre-computed results ────────
+    # Append query result to context if available
+    context = llm_context
+    if query_result and query_result.get("type") != "error":
+        context += f"\n\nQuery result for this question:\n{query_result}"
+
+    prompt = llm.build_prompt(
+        llm_context    = context,
+        question       = question,
+        outlier_summary= outlier_sum,
+        model_summary  = model_sum,
+    )
+
+    # ── 4. Ask Gemini to narrate ──────────────────────────────
+    answer = llm.ask_gemini(prompt)
+
+    # ── 5. Build insight card for key question types ──────────
+    insight = None
+   
+
+    return {
+        "answer":       answer,
+        "question_type": question_type,
+        "chart":        chart_json,       # Day 11 will populate this
+        "chart_type":   chart_type,
+        "insight":      insight,
+        "method":       method_label,
+        "query_result": query_result,
+    }
+
+
+def _parse_insight(raw: str) -> dict | None:
+    """Parse Gemini's 3-line insight format into a dict."""
+    try:
+        lines  = raw.strip().split('\n')
+        result = {}
+        for line in lines:
+            if line.startswith('WHAT:'):
+                result['what_happened']  = line[5:].strip()
+            elif line.startswith('WHY:'):
+                result['why_it_matters'] = line[4:].strip()
+            elif line.startswith('NEXT:'):
+                result['next_question']  = line[5:].strip()
+        if len(result) == 3:
+            return result
+        return None
+    except Exception:
+        return None

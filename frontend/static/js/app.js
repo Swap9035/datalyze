@@ -361,21 +361,43 @@ function updateMetricCards({ rows, cols, qualityGrade, outlierCount }) {
 /* ════════════════════════════════════════════
    5. CHAT
 ════════════════════════════════════════════ */
-function sendMessage() {
+async function sendMessage() {
   const text = chatInput.value.trim();
   if (!text || !state.fileLoaded) return;
-  chatInput.value = '';
+
+  chatInput.value    = '';
+  chatInput.disabled = true;
+  chatSend.disabled  = true;
+
   chatThread.querySelector('.chat-welcome')?.remove();
-
   appendUserBubble(text);
-
-  /* Day 9: replace with real POST /chat */
   appendBotThinking();
-  setTimeout(() => {
-    replaceBotThinking({ answer: `Chat live on Day 9. You asked: "${text}"` });
-  }, 800);
-}
 
+  try {
+    const res = await fetch(`${API_BASE}/chat/${state.sessionId}`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ question: text }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || 'Chat failed');
+    }
+
+    const data = await res.json();
+    replaceBotThinking(data);
+
+  } catch (err) {
+    replaceBotThinking({
+      answer: `Error: ${err.message}. Is the server running?`,
+    });
+  } finally {
+    chatInput.disabled = false;
+    chatSend.disabled  = false;
+    chatInput.focus();
+  }
+}
 chatSend.addEventListener('click', sendMessage);
 chatInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
