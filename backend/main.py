@@ -162,6 +162,7 @@ def get_column_stats(session_id: str):
 
     # Cache context string in session for fast LLM access on Day 9
     session_store.get_session(session_id)["llm_context"] = context
+    session_store.get_session(session_id)["col_stats"]   = stats
 
     return {
         "session_id": session_id,
@@ -279,14 +280,15 @@ def predict(session_id: str, input_data: dict):
 @app.post("/chat/{session_id}")
 def chat(session_id: str, body: dict):
     """
-    Main chat endpoint.
+    Main chat endpoint — Day 10 upgrade.
     Flow:
-      1. Load session context (pre-computed by Days 3-7)
+      1. Load session context
       2. Classify question type
-      3. Run pandas query if needed (your code)
-      4. Build prompt with pre-computed context
-      5. Ask Gemini to narrate (LLM as narrator, not analyst)
-      6. Return structured response: answer + optional chart + insight
+      3. Ask Gemini to parse question → structured JSON action
+      4. Execute action on real DataFrame (your pandas code)
+      5. Build prompt with pre-computed context + query result
+      6. Ask Gemini to narrate the result
+      7. Return structured response: answer + chart hint + method
     """
     session = session_store.get_session(session_id)
     if session is None:
@@ -299,60 +301,144 @@ def chat(session_id: str, body: dict):
     if not question:
         raise HTTPException(status_code=400, detail="Question cannot be empty.")
 
-    df             = session["df"]
-    llm_context    = session.get("llm_context", "")
-    outlier_sum    = session.get("outlier_summary", [])
-    model_bundle   = session.get("model_bundle")
+    df           = session["df"]
+    llm_context  = session.get("llm_context", "")
+    col_stats    = session.get("col_stats", {})
+    outlier_sum  = session.get("outlier_summary", [])
+    model_bundle = session.get("model_bundle")
 
     model_sum = []
     if model_bundle:
         model_sum = predictor.model_summary_text(model_bundle)
 
+    columns = list(df.columns)
+
     # ── 1. Classify question ──────────────────────────────────
     question_type = llm.classify_question(question)
 
-    # ── 2. Run pandas query (your code computes the data) ─────
-    query_result = None
-    chart_json   = None
-    chart_type   = None
-    method_label = None
-
-    columns = list(df.columns)
-
+    # ── 2. Parse question → structured action ─────────────────
+    # Gemini decides what to compute.
+    # Your query_engine.py does the actual computing.
     if question_type in ('stats', 'chart', 'general'):
-        action       = query_engine.parse_action_from_question(question, columns)
-        query_result = query_engine.run_query(df, action)
-        method_label = action.get("type", "query")
+        action = llm.parse_query_action(question, columns, col_stats)
+    else:
+        # For outlier/model questions use rule-based parser
+        from backend.query_engine import parse_action_from_question
+        action = parse_action_from_question(question, columns)
 
-    # ── 3. Build prompt with YOUR pre-computed results ────────
-    # Append query result to context if available
+    # ── 3. Execute action on real DataFrame ───────────────────
+    query_result  = query_engine.run_query(df, action)
+    method_label  = action.get("type", "query")
+    chart_hint    = query_result.get("chart_suggestion")
+
+    # ── 4. Build rich context for narration ───────────────────
     context = llm_context
     if query_result and query_result.get("type") != "error":
-        context += f"\n\nQuery result for this question:\n{query_result}"
+        # Summarize result for LLM (keep token usage low)
+        result_summary = _summarize_query_result(query_result)
+        context += f"\n\nQuery executed: {action}\nResult: {result_summary}"
 
     prompt = llm.build_prompt(
-        llm_context    = context,
-        question       = question,
-        outlier_summary= outlier_sum,
-        model_summary  = model_sum,
+        llm_context     = context,
+        question        = question,
+        outlier_summary = outlier_sum,
+        model_summary   = model_sum,
     )
 
-    # ── 4. Ask Gemini to narrate ──────────────────────────────
+    # ── 5. Gemini narrates ────────────────────────────────────
     answer = llm.ask_gemini(prompt)
 
-    # ── 5. Build insight card for key question types ──────────
+    # ── 6. Build insight (no extra API call) ──────────────────
     insight = None
-   
 
     return {
-        "answer":       answer,
+        "answer":        answer,
         "question_type": question_type,
-        "chart":        chart_json,       # Day 11 will populate this
-        "chart_type":   chart_type,
-        "insight":      insight,
-        "method":       method_label,
-        "query_result": query_result,
+        "chart":         None,        # Day 11 populates this
+        "chart_type":    chart_hint,
+        "insight":       insight,
+        "method":        method_label,
+        "query_result":  query_result,
+        "action":        action,
     }
+
+
+def _summarize_query_result(result: dict) -> str:
+    """
+    Convert a query result into a compact text summary for the LLM.
+    Keeps token usage low — LLM gets the key numbers, not raw data.
+    """
+    rtype = result.get("type")
+
+    if rtype == "group_by":
+        data   = result.get("data", [])
+        x_col  = result.get("x_col")
+        y_col  = result.get("y_col")
+        lines  = [f"{row[x_col]}: {round(row[y_col], 4)}" for row in data[:10]]
+        return f"Group by result ({x_col} → {y_col}): " + ", ".join(lines)
+
+    elif rtype == "top_n":
+        data  = result.get("data", [])
+        col   = result.get("column")
+        lines = [f"row {row.get('index', i)}: {row.get(col)}"
+                 for i, row in enumerate(data[:5])]
+        return f"Top {result.get('n')} by {col}: " + ", ".join(lines)
+
+    elif rtype == "filter_by":
+        return (
+            f"Filter {result.get('column')} = '{result.get('value')}': "
+            f"{result.get('matched_rows')} rows matched "
+            f"({result.get('pct')}% of dataset)"
+        )
+
+    elif rtype == "correlation":
+        return (
+            f"Correlation between {result.get('col1')} and {result.get('col2')}: "
+            f"r = {result.get('value')} ({result.get('strength')} relationship)"
+        )
+
+    elif rtype == "correlation_matrix":
+        cols = result.get("columns", [])
+        matrix = result.get("matrix", {})
+        # Show top correlations only
+        pairs = []
+        for i, c1 in enumerate(cols):
+            for c2 in cols[i+1:]:
+                val = matrix.get(c1, {}).get(c2, 0)
+                pairs.append((c1, c2, round(val, 4)))
+        pairs.sort(key=lambda x: abs(x[2]), reverse=True)
+        top = [f"{p[0]}↔{p[1]}: {p[2]}" for p in pairs[:5]]
+        return "Top correlations: " + ", ".join(top)
+
+    elif rtype == "summary":
+        col = result.get("column")
+        if col and "mean" in result:
+            return (
+                f"{col} stats: mean={result.get('mean')}, "
+                f"median={result.get('median')}, "
+                f"std={result.get('std')}, "
+                f"min={result.get('min')}, max={result.get('max')}"
+            )
+        elif col and "unique" in result:
+            return (
+                f"{col}: {result.get('unique')} unique values, "
+                f"most common: '{result.get('top_val')}'"
+            )
+        return f"Dataset: {result.get('rows')} rows, {result.get('cols')} cols"
+
+    elif rtype == "value_counts":
+        data = result.get("data", [])
+        col  = result.get("column")
+        lines = [f"{row[col]}: {row['count']}" for row in data[:5]]
+        return f"Value counts for {col}: " + ", ".join(lines)
+
+    elif rtype == "date_range":
+        return (
+            f"{result.get('column')} ranges from {result.get('min')} "
+            f"to {result.get('max')} ({result.get('range_days')} days)"
+        )
+
+    return str(result)[:200]
 
 
 def _parse_insight(raw: str) -> dict | None:

@@ -98,3 +98,70 @@ def build_insight_card(what_happened, why_it_matters, next_question, trend=None)
         "next_question":  next_question,
         "trend":          trend,
     }
+
+def parse_query_action(question: str, columns: list, col_stats: dict) -> dict:
+    """
+    Ask Gemini to parse a user question into a structured JSON action.
+    Gemini decides WHAT to compute — your query_engine.py does the computing.
+
+    Returns a dict like:
+      {"type": "group_by", "column": "Pclass", "agg_col": "Survived", "agg": "mean"}
+    """
+    if not _client:
+        return {"type": "summary"}
+
+    col_info = []
+    for col, stats in col_stats.items():
+        kind = stats.get('kind', 'unknown')
+        col_info.append(f"  {col} ({kind})")
+
+    cols_text = "\n".join(col_info)
+
+    prompt = f"""You are a query parser. Given a user question about a dataset,
+return ONLY a valid JSON object — no explanation, no markdown, no backticks.
+
+Available columns:
+{cols_text}
+
+Supported action types and their required fields:
+- top_n:        {{"type":"top_n",        "column":"<numeric_col>", "n":<int>}}
+- filter_by:    {{"type":"filter_by",    "column":"<col>",         "value":"<value>"}}
+- group_by:     {{"type":"group_by",     "column":"<group_col>",   "agg_col":"<numeric_col>", "agg":"mean|sum|count|max|min"}}
+- correlation:  {{"type":"correlation",  "col1":"<numeric_col>",   "col2":"<numeric_col>"}}
+- correlation:  {{"type":"correlation"}} for full matrix
+- summary:      {{"type":"summary",      "column":"<col>"}}
+- value_counts: {{"type":"value_counts", "column":"<categorical_col>"}}
+- summary:      {{"type":"summary"}} for overall dataset summary
+
+User question: {question}
+
+Return only the JSON object. Nothing else."""
+
+    try:
+        time.sleep(0.5)
+        response = _client.models.generate_content(
+            model=MODEL,
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                max_output_tokens=100,
+                temperature=0.0,   # deterministic — we want exact JSON
+            ),
+        )
+        raw = response.text.strip()
+
+        # Strip markdown fences if Gemini adds them anyway
+        raw = raw.replace('```json', '').replace('```', '').strip()
+
+        import json
+        action = json.loads(raw)
+
+        # Validate it has a type field
+        if 'type' not in action:
+            return {"type": "summary"}
+
+        return action
+
+    except Exception:
+        # Fall back to rule-based parser from query_engine.py
+        from backend.query_engine import parse_action_from_question
+        return parse_action_from_question(question, columns)
