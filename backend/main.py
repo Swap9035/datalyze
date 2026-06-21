@@ -6,7 +6,7 @@ import os
 import shutil
 import tempfile
 
-from backend import profiler, session_store , cleaner , outlier_detector , predictor, llm, query_engine
+from backend import profiler, session_store , cleaner , outlier_detector , predictor, llm, query_engine, chart_engine
 
 
 app = FastAPI(title="Datalyze API", version="1.0.0")
@@ -348,14 +348,20 @@ def chat(session_id: str, body: dict):
     # ── 5. Gemini narrates ────────────────────────────────────
     answer = llm.ask_gemini(prompt)
 
-    # ── 6. Build insight (no extra API call) ──────────────────
+    # ── 6. Auto-select + generate chart ──────────────────────
+    # YOUR decision tree picks the chart — not the LLM.
+    chart_label, chart_json = chart_engine.auto_chart(df, query_result)
+
+    # ── 7. Build insight card for grouped/model results ───────
     insight = None
+    if chart_json and query_result.get('type') in ('group_by', 'value_counts'):
+        insight = _build_insight_from_result(query_result, answer)
 
     return {
         "answer":        answer,
         "question_type": question_type,
-        "chart":         None,        # Day 11 populates this
-        "chart_type":    chart_hint,
+        "chart":         chart_json,
+        "chart_type":    chart_label,
         "insight":       insight,
         "method":        method_label,
         "query_result":  query_result,
@@ -458,3 +464,58 @@ def _parse_insight(raw: str) -> dict | None:
         return None
     except Exception:
         return None
+    
+def _build_insight_from_result(query_result: dict, answer: str) -> dict | None:
+    """
+    Build a structured insight card from query result + Gemini answer.
+    No extra API call — derived from the data we already have.
+    """
+    rtype = query_result.get('type')
+
+    if rtype == 'group_by':
+        data   = query_result.get('data', [])
+        x_col  = query_result.get('x_col', '')
+        y_col  = query_result.get('y_col', '')
+
+        if not data:
+            return None
+
+        values    = [row.get(y_col, 0) for row in data]
+        max_row   = data[values.index(max(values))]
+        min_row   = data[values.index(min(values))]
+        max_label = str(max_row.get(x_col, ''))
+        min_label = str(min_row.get(x_col, ''))
+        max_val   = round(max(values), 4)
+        min_val   = round(min(values), 4)
+        spread    = round(max_val - min_val, 4)
+
+        return {
+            "what_happened":  f"{max_label} has the highest value ({max_val}), "
+                              f"{min_label} the lowest ({min_val}).",
+            "why_it_matters": f"A spread of {spread} between groups suggests "
+                              f"{x_col} is a meaningful differentiator.",
+            "next_question":  f"Try: 'show {y_col} by another categorical column'",
+            "trend":          None,
+        }
+
+    elif rtype == 'value_counts':
+        data  = query_result.get('data', [])
+        x_col = query_result.get('x_col', '')
+
+        if not data:
+            return None
+
+        top   = data[0]
+        total = sum(row.get('count', 0) for row in data)
+        top_pct = round(100 * top.get('count', 0) / total, 1) if total else 0
+
+        return {
+            "what_happened":  f"'{top.get(x_col)}' is the most common value "
+                              f"({top.get('count')} occurrences, {top_pct}%).",
+            "why_it_matters": f"{x_col} has {len(data)} distinct values — "
+                              f"{'low' if len(data) <= 5 else 'high'} cardinality.",
+            "next_question":  f"Try: 'show survival rate by {x_col}'",
+            "trend":          None,
+        }
+
+    return None
