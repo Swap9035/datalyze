@@ -975,3 +975,83 @@ async function submitPrediction() {
       <p style="color:var(--red);font-size:12px">Error: ${escHtml(err.message)}</p>`;
   }
 }
+
+/* ════════════════════════════════════════════
+   EXPORT — Day 12
+════════════════════════════════════════════ */
+exportBtn.addEventListener('click', () => {
+  if (!state.sessionId) return;
+  showExportMenu();
+});
+
+function showExportMenu() {
+  document.getElementById('export-menu')?.remove();
+
+  const menu = document.createElement('div');
+  menu.id = 'export-menu';
+  menu.style.cssText = `
+    position:fixed;top:52px;right:16px;
+    background:var(--surface);border:0.5px solid var(--border-2);
+    border-radius:8px;padding:6px;z-index:150;
+    box-shadow:0 8px 24px rgba(0,0,0,.4);min-width:180px`;
+
+  menu.innerHTML = `
+    <div style="font-size:10px;color:var(--text-3);
+                text-transform:uppercase;letter-spacing:.05em;
+                padding:4px 8px;margin-bottom:4px">Export as</div>
+    <button onclick="downloadReport()"
+            style="display:block;width:100%;text-align:left;
+                   padding:7px 10px;background:none;border:none;
+                   color:var(--text-2);font-size:12px;border-radius:6px;
+                   cursor:pointer"
+            onmouseover="this.style.background='var(--surface-2)'"
+            onmouseout="this.style.background='none'">
+      📄 Markdown report (.md)
+    </button>
+    <button onclick="downloadCSV()"
+            style="display:block;width:100%;text-align:left;
+                   padding:7px 10px;background:none;border:none;
+                   color:var(--text-2);font-size:12px;border-radius:6px;
+                   cursor:pointer"
+            onmouseover="this.style.background='var(--surface-2)'"
+            onmouseout="this.style.background='none'">
+      📊 Column summary (.csv)
+    </button>`;
+
+  document.body.appendChild(menu);
+
+  setTimeout(() => {
+    document.addEventListener('click', function handler(e) {
+      if (!menu.contains(e.target) && e.target !== exportBtn) {
+        menu.remove();
+        document.removeEventListener('click', handler);
+      }
+    });
+  }, 100);
+}
+
+async function downloadReport() {
+  document.getElementById('export-menu')?.remove();
+  if (!state.sessionId) return;
+
+  try { await fetch(`${API_BASE}/trends/${state.sessionId}`); } catch {}
+
+  const a   = document.createElement('a');
+  a.href    = `${API_BASE}/export/report/${state.sessionId}`;
+  a.download = 'datalyze_report.md';
+  a.click();
+
+  addActivity('Markdown report downloaded', 'teal');
+}
+
+async function downloadCSV() {
+  document.getElementById('export-menu')?.remove();
+  if (!state.sessionId) return;
+
+  const a   = document.createElement('a');
+  a.href    = `${API_BASE}/export/csv/${state.sessionId}`;
+  a.download = 'datalyze_summary.csv';
+  a.click();
+
+  addActivity('CSV summary downloaded', 'teal');
+}
