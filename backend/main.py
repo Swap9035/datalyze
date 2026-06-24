@@ -6,7 +6,7 @@ import os
 import shutil
 import tempfile
 
-from backend import profiler, session_store , cleaner , outlier_detector , predictor, llm, query_engine, chart_engine
+from backend import profiler, session_store , cleaner , outlier_detector , predictor, llm, query_engine, chart_engine, trend_analyzer, report_generator
 
 
 app = FastAPI(title="Datalyze API", version="1.0.0")
@@ -133,6 +133,7 @@ def clean_session_data(session_id: str):
 
     profile_after = profiler.profile_dataframe(df_after)
     summary_lines = cleaner.cleaning_summary_text(report)
+    session["cleaning_report"] = report
 
     return {
         "session_id": session_id,
@@ -193,6 +194,9 @@ def get_outliers(session_id: str):
 
     # Cache in session for LLM context on Day 9
     session["outlier_summary"] = summary
+    session["iqr_results"]      = iqr_results
+    session["zscore_results"]   = zscore_results
+
 
     return {
         "session_id":    session_id,
@@ -519,3 +523,101 @@ def _build_insight_from_result(query_result: dict, answer: str) -> dict | None:
         }
 
     return None
+
+@app.get("/trends/{session_id}")
+def get_trends(session_id: str):
+    """Detect trends in numeric/datetime columns."""
+    session = session_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404,
+                            detail="Session not found.")
+
+    df      = session["df"]
+    results = trend_analyzer.detect_trends(df)
+    summary = trend_analyzer.trend_summary_text(results)
+
+    session["trend_results"] = results
+
+    return {
+        "session_id":    session_id,
+        "trend_results": results,
+        "summary":       summary,
+    }
+
+
+@app.get("/export/report/{session_id}")
+def export_report(session_id: str):
+    """Export full Markdown analysis report."""
+    from fastapi.responses import Response
+
+    session = session_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404,
+                            detail="Session not found.")
+
+    df       = session["df"]
+    filename = session.get("filename", "dataset")
+    profile  = profiler.profile_dataframe(df)
+    stats    = session.get("col_stats") or profiler.compute_column_stats(df)
+    insights = profiler.quick_insights(df, profile)
+
+    cleaning = session.get("cleaning_report", {})
+    iqr      = session.get("iqr_results", {})
+    zscore   = session.get("zscore_results", {})
+    trends   = session.get("trend_results")
+
+    model_metrics = None
+    feature_imp   = None
+    bundle        = session.get("model_bundle")
+    if bundle:
+        model_metrics = bundle["metrics"]
+        feature_imp   = bundle["feature_importance"]
+
+    md = report_generator.generate_markdown_report(
+        filename        = filename,
+        profile         = profile,
+        cleaning_report = cleaning,
+        col_stats       = stats,
+        outlier_iqr     = iqr,
+        outlier_zscore  = zscore,
+        model_metrics   = model_metrics,
+        feature_importance = feature_imp,
+        trend_results   = trends,
+        insights        = insights,
+    )
+
+    return Response(
+        content     = md,
+        media_type  = "text/markdown",
+        headers     = {
+            "Content-Disposition":
+                f'attachment; filename="datalyze_report_{filename}.md"'
+        },
+    )
+
+
+@app.get("/export/csv/{session_id}")
+def export_csv(session_id: str):
+    """Export column stats summary as CSV."""
+    from fastapi.responses import Response
+
+    session = session_store.get_session(session_id)
+    if session is None:
+        raise HTTPException(status_code=404,
+                            detail="Session not found.")
+
+    df      = session["df"]
+    profile = profiler.profile_dataframe(df)
+    stats   = session.get("col_stats") or profiler.compute_column_stats(df)
+    iqr     = session.get("iqr_results", {})
+
+    csv_content = report_generator.generate_csv_summary(profile, stats, iqr)
+
+    return Response(
+        content    = csv_content,
+        media_type = "text/csv",
+        headers    = {
+            "Content-Disposition":
+                'attachment; filename="datalyze_summary.csv"'
+        },
+    )
