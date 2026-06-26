@@ -178,6 +178,9 @@ async function onUploadSuccess(data) {
   addActivity(`${data.filename} uploaded — ${data.profile.rows.toLocaleString()} rows, ${data.profile.cols} cols`, 'purple');
 
   chatThread.querySelector('.chat-welcome')?.remove();
+  /* Show suggestions bar */
+  const sugBar = document.getElementById('suggestions-bar');
+  if (sugBar) sugBar.style.display = 'flex';
 
   /* ── Day 3: run cleaning pipeline automatically ── */
   await runCleaningPipeline(data);
@@ -187,6 +190,7 @@ async function onUploadSuccess(data) {
 
 async function runCleaningPipeline(uploadData) {
   try {
+    setLoadingBar(20);
     const res = await fetch(`${API_BASE}/clean/${state.sessionId}`, { method: 'POST' });
     if (!res.ok) {
       const err = await res.json();
@@ -224,11 +228,10 @@ async function runCleaningPipeline(uploadData) {
     }
 
     
-    /* Show cleaning report as a bot message + insights from upload */
     showCleaningReportInChat(data.summary, uploadData.insights);
-
-    /* Auto-fetch deep stats + cache LLM context for Day 9 */
+    setLoadingBar(60);
     await fetchAndCacheStats();
+    setLoadingBar(100);
 
   } catch (err) {
     addActivity(`Cleaning failed: ${err.message}`, 'red');
@@ -335,7 +338,10 @@ clearFileBtn.addEventListener('click', () => {
     document.getElementById(`mc-${id}`).classList.add('skeleton');
     document.getElementById(`mc-${id}-val`).textContent = '—';
   });
-
+  showToast('Dataset cleared', 'amber');
+  questionCount = 0;
+  const sugBar = document.getElementById('suggestions-bar');
+  if (sugBar) sugBar.style.display = 'none';
   showView('upload');
 });
 
@@ -371,7 +377,8 @@ async function sendMessage() {
 
   chatThread.querySelector('.chat-welcome')?.remove();
   appendUserBubble(text);
-  appendBotThinking();
+  appendBotThinkingAnimated();
+  setLoadingBar(30);
 
   try {
     const res = await fetch(`${API_BASE}/chat/${state.sessionId}`, {
@@ -386,9 +393,13 @@ async function sendMessage() {
     }
 
     const data = await res.json();
+    setLoadingBar(100);
     replaceBotThinking(data);
+    updateSuggestions(data.question_type || 'general');
+    incrementQuestionBadge();
 
   } catch (err) {
+    setLoadingBar(100);
     replaceBotThinking({
       answer: `Error: ${err.message}. Is the server running?`,
     });
@@ -539,7 +550,7 @@ function escHtml(s) {
   checkHealth();
   setInterval(checkHealth, 30_000);
 
-  console.log('%cDatalyze Day 8 ready ✓', 'color:#7c6ef5;font-weight:600');
+  console.log('%cDatalyze v1.0 ready ✓', 'color:#7c6ef5;font-weight:600;font-size:14px');
 })();
 
 async function fetchAndCacheStats() {
@@ -683,6 +694,8 @@ async function trainModel() {
       `Model trained — accuracy: ${data.metrics.accuracy}%`,
       'teal'
     );
+    showToast(`Model trained — ${data.metrics.accuracy}% accuracy`, 'teal');
+    pulseButton(predictBtn);
 
     /* Show model card in chat */
     showModelCardInChat(data);
@@ -802,6 +815,7 @@ function showModelCardInChat(data) {
 }
 
 function showPredictionPanel(data) {
+  updatePredictionsPage(data);
   const panel = document.getElementById('rp-prediction');
   const card  = document.getElementById('prediction-card');
   panel.style.display = 'block';
@@ -1042,6 +1056,8 @@ async function downloadReport() {
   a.click();
 
   addActivity('Markdown report downloaded', 'teal');
+  showToast('Report downloaded successfully', 'teal');
+
 }
 
 async function downloadCSV() {
@@ -1054,4 +1070,245 @@ async function downloadCSV() {
   a.click();
 
   addActivity('CSV summary downloaded', 'teal');
+  showToast('CSV summary downloaded', 'teal');
+}
+
+/* ════════════════════════════════════════════
+   UI POLISH — Day 14
+════════════════════════════════════════════ */
+
+/* ── Toast notifications ── */
+function showToast(message, type = 'teal', duration = 3000) {
+  const container = document.getElementById('toast-container');
+  if (!container) return;
+
+  const toast = document.createElement('div');
+  toast.className = `toast toast--${type}`;
+
+  const icons = {
+    teal:   '✓',
+    red:    '✕',
+    amber:  '⚠',
+    purple: '◆',
+  };
+
+  toast.innerHTML = `
+    <span style="font-size:14px">${icons[type] || '•'}</span>
+    <span>${escHtml(message)}</span>`;
+
+  container.appendChild(toast);
+
+  setTimeout(() => {
+    toast.style.animation = 'toast-out .2s ease forwards';
+    setTimeout(() => toast.remove(), 200);
+  }, duration);
+}
+
+/* ── Loading bar ── */
+function setLoadingBar(pct) {
+  const bar = document.getElementById('loading-bar');
+  if (!bar) return;
+  bar.style.width = `${pct}%`;
+  if (pct >= 100) {
+    setTimeout(() => { bar.style.width = '0'; }, 400);
+  }
+}
+
+/* ── Typing indicator (replaces plain "Analysing…") ── */
+function appendBotThinkingAnimated() {
+  thinkingEl = document.createElement('div');
+  thinkingEl.className = 'bubble';
+  thinkingEl.innerHTML = `
+    <div class="bubble-avatar bubble-avatar--bot">DZ</div>
+    <div class="bubble-body">
+      <div class="bubble-msg" style="color:var(--text-3)">
+        <span class="typing-dots">
+          <span></span><span></span><span></span>
+        </span>
+      </div>
+    </div>`;
+  chatThread.appendChild(thinkingEl);
+  scrollChat();
+}
+
+/* ── Suggested questions ── */
+function useSuggestion(el) {
+  chatInput.value = el.textContent;
+  chatInput.focus();
+  sendMessage();
+}
+
+function updateSuggestions(questionType) {
+  const bar  = document.getElementById('suggestions-bar');
+  if (!bar) return;
+
+  const sets = {
+    stats: [
+      'What is the average fare?',
+      'Show distribution of age',
+      'Which column has most nulls?',
+      'Show top 10 by fare',
+    ],
+    chart: [
+      'Show survival by class',
+      'Show correlation matrix',
+      'Distribution of age',
+      'Value counts for sex',
+    ],
+    outliers: [
+      'Which columns have outliers?',
+      'Show fare outliers',
+      'Compare IQR vs z-score',
+    ],
+    model: [
+      'What is the model accuracy?',
+      'Which features matter most?',
+      'Show feature importance',
+    ],
+    general: [
+      'What are the outliers?',
+      'Show correlation matrix',
+      'Which columns have nulls?',
+      'Show survival by class',
+    ],
+  };
+
+  const chips = sets[questionType] || sets.general;
+  bar.innerHTML = chips.map(q =>
+    `<span class="suggestion-chip" onclick="useSuggestion(this)">${escHtml(q)}</span>`
+  ).join('');
+}
+
+/* ── Pulse the predict button after model trains ── */
+function pulseButton(btn) {
+  btn.classList.add('pulse');
+  setTimeout(() => btn.classList.remove('pulse'), 5000);
+}
+
+/* ── Nav badge (show question count) ── */
+let questionCount = 0;
+function incrementQuestionBadge() {
+  questionCount++;
+  const nav = document.querySelector('.nav-item[data-view="analysis"]');
+  if (!nav) return;
+  let badge = nav.querySelector('.nav-badge');
+  if (!badge) {
+    badge = document.createElement('span');
+    badge.className = 'nav-badge';
+    nav.appendChild(badge);
+  }
+  badge.textContent = questionCount;
+}
+
+/* ════════════════════════════════════════════
+   PREDICTIONS PAGE — Full implementation
+════════════════════════════════════════════ */
+function updatePredictionsPage(modelData) {
+  const statusEl = document.getElementById('pred-status-content');
+  const fiCard   = document.getElementById('pred-fi-card');
+  const fiEl     = document.getElementById('pred-fi-content');
+  if (!statusEl || !modelData || !modelData.metrics) return;
+
+  statusEl.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      ${Object.entries(modelData.metrics).map(([k,v]) => `
+        <div style="background:var(--surface-2);border:0.5px solid var(--border);
+                    border-radius:8px;padding:8px 12px;text-align:center;min-width:70px">
+          <div style="font-size:16px;font-weight:600;color:var(--accent)">${v}%</div>
+          <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;
+                      letter-spacing:.05em;margin-top:2px">${k}</div>
+        </div>`).join('')}
+    </div>
+    <div style="font-size:11px;color:var(--text-3)">
+      Trained on ${modelData.train_size} rows · Tested on ${modelData.test_size} rows (80/20 split)
+    </div>`;
+
+  /* Feature importance bars */
+  if (fiCard && fiEl && modelData.feature_importance?.length) {
+    fiCard.style.display = 'block';
+    const maxAbs = Math.max(...modelData.feature_importance.map(f => f.abs_impact));
+    fiEl.innerHTML = modelData.feature_importance.slice(0, 6).map(f => {
+      const pct   = maxAbs > 0 ? (f.abs_impact / maxAbs * 100).toFixed(1) : 0;
+      const color = f.direction === 'positive' ? 'var(--teal)' : 'var(--red)';
+      const sign  = f.coefficient > 0 ? '+' : '';
+      return `
+        <div style="margin-bottom:8px">
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
+            <span style="color:var(--text)">${escHtml(f.feature)}</span>
+            <span style="color:${color};font-family:monospace">${sign}${f.coefficient}</span>
+          </div>
+          <div style="height:4px;background:var(--surface-3);border-radius:2px">
+            <div style="height:100%;width:${pct}%;background:${color};border-radius:2px"></div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+}
+
+async function runPagePrediction() {
+  if (!state.sessionId || !state.modelData) {
+    showToast('Please upload a dataset first', 'amber');
+    return;
+  }
+
+  const inputData = {
+    Pclass: parseFloat(document.getElementById('pred-pclass').value),
+    Sex:    document.getElementById('pred-sex').value,
+    Age:    parseFloat(document.getElementById('pred-age').value),
+    Fare:   parseFloat(document.getElementById('pred-fare').value),
+    SibSp:  parseFloat(document.getElementById('pred-sibsp').value),
+    Parch:  parseFloat(document.getElementById('pred-parch').value),
+  };
+
+  const resultCard = document.getElementById('pred-page-result');
+  const resultEl   = document.getElementById('pred-page-result-content');
+  resultCard.style.display = 'block';
+  resultEl.innerHTML = `<div style="color:var(--text-3);font-size:12px">Predicting…</div>`;
+
+  try {
+    const res = await fetch(`${API_BASE}/predict/${state.sessionId}`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(inputData),
+    });
+
+    if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
+
+    const data    = await res.json();
+    const survived = data.prediction === 1;
+    const color    = survived ? 'var(--teal)' : 'var(--red)';
+    const bg       = survived ? 'rgba(45,212,160,.08)' : 'rgba(245,101,101,.08)';
+
+    resultEl.innerHTML = `
+      <div style="background:${bg};border:0.5px solid ${color};
+                  border-radius:8px;padding:14px">
+        <div style="font-size:20px;font-weight:600;color:${color};margin-bottom:6px">
+          ${escHtml(data.label)}
+        </div>
+        <div style="font-size:12px;color:var(--text-2);margin-bottom:12px">
+          ${data.confidence}% confidence ·
+          Survived: ${data.prob_survived}% ·
+          Did not: ${data.prob_not}%
+        </div>
+        <div style="font-size:10px;color:var(--text-3);text-transform:uppercase;
+                    letter-spacing:.05em;margin-bottom:6px">Top influencing features</div>
+        ${data.top_features.map(f => `
+          <div style="display:flex;justify-content:space-between;
+                      font-size:11px;padding:3px 0;color:var(--text-2)">
+            <span>${escHtml(f.feature)}</span>
+            <span style="color:${f.direction === 'positive' ?
+              'var(--teal)' : 'var(--red)'};font-family:monospace">
+              ${f.coefficient > 0 ? '+' : ''}${f.coefficient}
+            </span>
+          </div>`).join('')}
+      </div>`;
+
+    addActivity(`Prediction: ${data.label} (${data.confidence}% confidence)`,
+                survived ? 'teal' : 'red');
+    showToast(`${data.label} — ${data.confidence}% confidence`,
+              survived ? 'teal' : 'red');
+
+  } catch (err) {
+    resultEl.innerHTML = `<div style="color:var(--red);font-size:12px">Error: ${escHtml(err.message)}</div>`;
+  }
 }
