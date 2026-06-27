@@ -1,6 +1,6 @@
 /* Datalyze — app.js (Day 1) */
 
-const API_BASE = '';
+const API_BASE = 'https://datalyze-api.onrender.com';
 
 /* ── DOM refs ── */
 const healthDot    = document.getElementById('health-dot');

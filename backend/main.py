@@ -14,12 +14,16 @@ app = FastAPI(title="Datalyze API", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+        "https://Swap9035.github.io",  # replace!
+        "*"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 frontend_path = os.path.join(os.path.dirname(__file__), "..", "frontend")
 app.mount(
     "/static",
