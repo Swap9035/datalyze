@@ -7,7 +7,8 @@ import shutil
 import tempfile
 
 from backend import profiler, session_store , cleaner , outlier_detector , predictor, llm, query_engine, chart_engine, trend_analyzer, report_generator
-
+from dotenv import load_dotenv
+load_dotenv()   # loads .env locally; on Render uses dashboard env vars
 
 app = FastAPI(title="Datalyze API", version="1.0.0")
 
