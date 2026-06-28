@@ -106,7 +106,7 @@ function setupUploadZone() {
       const name = btn.dataset.sample;
       showUploadLoading(true);
       try {
-        const fileRes = await fetch(`/static/samples/${name}.csv`);
+        const fileRes = await fetch(`static/samples/${name}.csv`);
         if (!fileRes.ok) throw new Error('Sample file not found. Add it to frontend/static/samples/');
         const blob = await fileRes.blob();
         const file = new File([blob], `${name}.csv`, { type: 'text/csv' });
