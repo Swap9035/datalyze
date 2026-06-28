@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Datalyze</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/plotly.js-dist@2/plotly.min.js"></script>
+</head>
+<body>
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand">
+        <span class="brand-dot"></span>
+        <span class="brand-name">Datalyze</span>
+      </div>
+      <div class="file-pill" id="file-pill" style="display:none">
+        <i class="icon-file"></i>
+        <span id="file-pill-name">No file loaded</span>
+        <button class="file-pill-close" id="clear-file" title="Remove file">×</button>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div id="health-dot" class="health-dot health-checking" title="Checking API..."></div>
+      <span id="version-tag" style="font-size:10px;color:var(--text-3);letter-spacing:.04em">v1.0</span>
+      <button class="btn-ghost" id="export-btn" disabled>Export report</button>
+      <button class="btn-accent" id="predict-btn" disabled>Run prediction</button>
+    </div>
+  </header>
+
+  <!-- Main layout -->
+  <div class="layout">
+
+    <!-- Sidebar -->
+    <nav class="sidebar">
+      <div class="nav-section">
+        <button class="nav-item active" data-view="analysis">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3v18h18M7 16l4-4 4 4 4-4"/></svg>
+          Analysis
+        </button>
+        <button class="nav-item" data-view="predictions">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12"/></svg>
+          Predictions
+        </button>
+        <button class="nav-item" data-view="notebooks">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+          Notebooks
+        </button>
+        <button class="nav-item" data-view="export">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Export
+        </button>
+      </div>
+      <div class="nav-section nav-section--bottom">
+        <button class="nav-item" data-view="settings">
+          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          Settings
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="main" id="main-content">
+
+      <!-- Upload view (default) -->
+      <div class="view view--active" id="view-upload">
+        <div class="upload-center">
+          <div class="upload-zone" id="upload-zone">
+            <div class="upload-zone-inner" id="upload-zone-inner">
+              <div class="upload-icon-wrap">
+                <svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.5" class="upload-icon">
+                  <path d="M8 30v8a2 2 0 0 0 2 2h28a2 2 0 0 0 2-2v-8"/>
+                  <polyline points="16 16 24 8 32 16"/>
+                  <line x1="24" y1="8" x2="24" y2="30"/>
+                </svg>
+              </div>
+              <p class="upload-heading">Drop your dataset here</p>
+              <p class="upload-sub">CSV, Excel (.xlsx), or JSON · up to 50 MB</p>
+              <label class="btn-upload" for="file-input">Browse files</label>
+              <input type="file" id="file-input" accept=".csv,.xlsx,.xls,.json" hidden />
+            </div>
+          </div>
+          <div class="upload-samples">
+            <span class="upload-samples-label">Try a sample dataset:</span>
+            <button class="sample-btn" data-sample="titanic">Titanic</button>
+            <button class="sample-btn" data-sample="superstore">Superstore Sales</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Analysis view (shown after upload) -->
+      <div class="view" id="view-analysis">
+
+        <!-- Metric cards row -->
+        <div class="metric-row" id="metric-row">
+          <div class="metric-card skeleton" id="mc-rows">
+            <div class="metric-val" id="mc-rows-val">—</div>
+            <div class="metric-lbl">Rows</div>
+          </div>
+          <div class="metric-card skeleton" id="mc-cols">
+            <div class="metric-val" id="mc-cols-val">—</div>
+            <div class="metric-lbl">Columns</div>
+          </div>
+          <div class="metric-card skeleton" id="mc-quality">
+            <div class="metric-val" id="mc-quality-val">—</div>
+            <div class="metric-lbl">Data quality</div>
+          </div>
+          <div class="metric-card skeleton" id="mc-outliers">
+            <div class="metric-val" id="mc-outliers-val">—</div>
+            <div class="metric-lbl">Outliers</div>
+          </div>
+        </div>
+
+        <!-- Chat + right panel -->
+        <div class="analysis-grid">
+
+          <!-- Chat panel -->
+          <section class="chat-panel">
+            <div class="chat-thread" id="chat-thread">
+              <div class="chat-welcome">
+                <div class="welcome-icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+                </div>
+                <p class="welcome-title">Ask anything about your data</p>
+                <p class="welcome-sub">Try: "What are the outliers?" · "Show survival by class" · "Which columns have nulls?"</p>
+              </div>
+            </div>
+
+            <div class="suggestions-bar" id="suggestions-bar" style="display:none">
+              <span class="suggestion-chip" onclick="useSuggestion(this)">What are the outliers?</span>
+              <span class="suggestion-chip" onclick="useSuggestion(this)">Show correlation matrix</span>
+              <span class="suggestion-chip" onclick="useSuggestion(this)">Which columns have nulls?</span>
+              <span class="suggestion-chip" onclick="useSuggestion(this)">Show distribution of age</span>
+            </div>
+            <div class="chat-input-row">
+              <input
+                type="text"
+                id="chat-input"
+                class="chat-input"
+                placeholder="Ask anything about your data…"
+                disabled
+                autocomplete="off"
+              />
+              <button class="chat-send" id="chat-send" disabled aria-label="Send message">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+              </button>
+            </div>
+          </section>
+
+          <!-- Right panel -->
+          <aside class="right-panel">
+            <div class="rp-section">
+              <div class="rp-title">Activity</div>
+              <div class="activity-feed" id="activity-feed">
+                <div class="activity-empty">No activity yet</div>
+              </div>
+            </div>
+            <div class="rp-section" id="rp-prediction" style="display:none">
+              <div class="rp-title">Latest prediction</div>
+              <div class="prediction-card" id="prediction-card"></div>
+            </div>
+          </aside>
+
+        </div>
+      </div>
+
+      <!-- Notebooks view -->
+      <div class="view" id="view-notebooks">
+        <div class="placeholder-view">
+          <p class="placeholder-title">EDA Notebooks</p>
+          <p class="placeholder-sub">Available on Day 4 — Titanic EDA notebook</p>
+          <div class="notebook-links">
+            <a class="notebook-link" href="notebooks/titanic_eda.ipynb" target="_blank">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              titanic_eda.ipynb
+            </a>
+            <a class="notebook-link" href="notebooks/superstore_eda.ipynb" target="_blank">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              superstore_eda.ipynb
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- EXPORT VIEW -->
+      <div class="view" id="view-export">
+        <div style="padding:16px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1">
+
+          <div style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:2px">Export Analysis</div>
+          <div style="font-size:12px;color:var(--text-3);margin-bottom:4px">Download your full analysis as a report or data summary</div>
+
+          <!-- Markdown report card -->
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="width:40px;height:40px;background:var(--accent-dim);border:0.5px solid rgba(124,110,245,.3);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📄</div>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px">Markdown Report</div>
+                <div style="font-size:12px;color:var(--text-2);margin-bottom:12px;line-height:1.6">
+                  Complete analysis including data quality, cleaning report, column statistics, outlier detection, ML model metrics, and trend analysis.
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+                  <span style="font-size:10px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px;padding:2px 8px;color:var(--text-3)">Data quality grade</span>
+                  <span style="font-size:10px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px;padding:2px 8px;color:var(--text-3)">Column stats</span>
+                  <span style="font-size:10px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px;padding:2px 8px;color:var(--text-3)">Outlier findings</span>
+                  <span style="font-size:10px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px;padding:2px 8px;color:var(--text-3)">ML metrics</span>
+                </div>
+                <button onclick="downloadReport()"
+                        style="padding:7px 16px;background:var(--accent-dim);border:0.5px solid rgba(124,110,245,.35);border-radius:6px;color:var(--accent);font-size:12px;font-weight:500;cursor:pointer">
+                  Download .md
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- CSV summary card -->
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="display:flex;align-items:flex-start;gap:12px">
+              <div style="width:40px;height:40px;background:var(--teal-dim);border:0.5px solid rgba(45,212,160,.2);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">📊</div>
+              <div style="flex:1">
+                <div style="font-size:13px;font-weight:500;color:var(--text);margin-bottom:4px">Column Summary CSV</div>
+                <div style="font-size:12px;color:var(--text-2);margin-bottom:12px;line-height:1.6">
+                  Per-column statistics in spreadsheet format. Opens directly in Excel or Google Sheets. Includes data types, null counts, mean, median, and outlier counts.
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+                  <span style="font-size:10px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px;padding:2px 8px;color:var(--text-3)">One row per column</span>
+                  <span style="font-size:10px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px;padding:2px 8px;color:var(--text-3)">Excel-ready</span>
+                  <span style="font-size:10px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px;padding:2px 8px;color:var(--text-3)">Null analysis</span>
+                </div>
+                <button onclick="downloadCSV()"
+                        style="padding:7px 16px;background:var(--teal-dim);border:0.5px solid rgba(45,212,160,.2);border-radius:6px;color:var(--teal);font-size:12px;font-weight:500;cursor:pointer">
+                  Download .csv
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- What's included -->
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:10px">Report includes</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+              <div style="font-size:12px;color:var(--text-2);padding:4px 0">✓ Dataset overview</div>
+              <div style="font-size:12px;color:var(--text-2);padding:4px 0">✓ Data cleaning log</div>
+              <div style="font-size:12px;color:var(--text-2);padding:4px 0">✓ Column statistics</div>
+              <div style="font-size:12px;color:var(--text-2);padding:4px 0">✓ Outlier detection</div>
+              <div style="font-size:12px;color:var(--text-2);padding:4px 0">✓ ML model metrics</div>
+              <div style="font-size:12px;color:var(--text-2);padding:4px 0">✓ Feature importance</div>
+              <div style="font-size:12px;color:var(--text-2);padding:4px 0">✓ Trend analysis</div>
+              <div style="font-size:12px;color:var(--text-2);padding:4px 0">✓ Quick insights</div>
+            </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- PREDICTIONS VIEW -->
+      <div class="view" id="view-predictions">
+        <div style="padding:16px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1">
+
+          <!-- Model status card -->
+          <div id="pred-model-status" style="background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:12px">Model Status</div>
+            <div id="pred-status-content" style="font-size:13px;color:var(--text-2)">
+              Upload a dataset to train the model automatically.
+            </div>
+          </div>
+
+          <!-- Input form -->
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:14px">Passenger Details</div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="pred-form">
+              <div>
+                <label style="display:block;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Passenger Class</label>
+                <select id="pred-pclass" style="width:100%;background:var(--surface-2);border:0.5px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:12px;outline:none">
+                  <option value="1">1st Class</option>
+                  <option value="2">2nd Class</option>
+                  <option value="3" selected>3rd Class</option>
+                </select>
+              </div>
+              <div>
+                <label style="display:block;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Sex</label>
+                <select id="pred-sex" style="width:100%;background:var(--surface-2);border:0.5px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:12px;outline:none">
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                </select>
+              </div>
+              <div>
+                <label style="display:block;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Age</label>
+                <input id="pred-age" type="number" value="29" min="1" max="100"
+                       style="width:100%;background:var(--surface-2);border:0.5px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:12px;outline:none"/>
+              </div>
+              <div>
+                <label style="display:block;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Fare (£)</label>
+                <input id="pred-fare" type="number" value="50" min="0"
+                       style="width:100%;background:var(--surface-2);border:0.5px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:12px;outline:none"/>
+              </div>
+              <div>
+                <label style="display:block;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Siblings / Spouses</label>
+                <input id="pred-sibsp" type="number" value="0" min="0"
+                       style="width:100%;background:var(--surface-2);border:0.5px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:12px;outline:none"/>
+              </div>
+              <div>
+                <label style="display:block;font-size:10px;color:var(--text-3);text-transform:uppercase;letter-spacing:.05em;margin-bottom:4px">Parents / Children</label>
+                <input id="pred-parch" type="number" value="0" min="0"
+                       style="width:100%;background:var(--surface-2);border:0.5px solid var(--border);border-radius:6px;color:var(--text);padding:7px 10px;font-size:12px;outline:none"/>
+              </div>
+            </div>
+            <button onclick="runPagePrediction()"
+                    style="width:100%;margin-top:14px;padding:10px;
+                           background:var(--accent-dim);
+                           border:0.5px solid rgba(124,110,245,.35);
+                           border-radius:8px;color:var(--accent);
+                           font-size:13px;font-weight:500;cursor:pointer;
+                           transition:background .15s"
+                    onmouseover="this.style.background='rgba(124,110,245,.25)'"
+                    onmouseout="this.style.background='var(--accent-dim)'">
+              Run prediction →
+            </button>
+          </div>
+
+          <!-- Result card -->
+          <div id="pred-page-result" style="display:none;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:12px">Prediction Result</div>
+            <div id="pred-page-result-content"></div>
+          </div>
+
+          <!-- Feature importance -->
+          <div id="pred-fi-card" style="display:none;background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:12px">Feature Importance</div>
+            <div id="pred-fi-content"></div>
+            <div style="font-size:10px;color:var(--text-3);margin-top:8px">Positive = increases survival probability · Negative = decreases it</div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- SETTINGS VIEW -->
+      <div class="view" id="view-settings">
+        <div style="padding:16px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1">
+
+          <div style="font-size:15px;font-weight:500;color:var(--text);margin-bottom:2px">Settings</div>
+
+          <!-- About card -->
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:12px">About</div>
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+              <div style="width:10px;height:10px;border-radius:50%;background:var(--accent)"></div>
+              <span style="font-size:14px;font-weight:600;color:var(--text)">Datalyze</span>
+              <span style="font-size:11px;color:var(--text-3);background:var(--surface-2);border:0.5px solid var(--border);border-radius:10px;padding:1px 8px">v1.0</span>
+            </div>
+            <div style="font-size:12px;color:var(--text-2);line-height:1.7">
+              End-to-end data analysis platform. Upload a dataset, get instant cleaning, statistics, outlier detection, ML predictions, and AI-powered chat insights.
+            </div>
+          </div>
+
+          <!-- Tech stack card -->
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:12px">Tech Stack</div>
+            <div style="display:flex;flex-direction:column;gap:6px">
+              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--border);font-size:12px">
+                <span style="color:var(--text-2)">Backend</span>
+                <span style="color:var(--text)">Python · FastAPI · Pandas</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--border);font-size:12px">
+                <span style="color:var(--text-2)">ML</span>
+                <span style="color:var(--text)">scikit-learn · LogisticRegression</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--border);font-size:12px">
+                <span style="color:var(--text-2)">Charts</span>
+                <span style="color:var(--text)">Plotly · dark theme</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:0.5px solid var(--border);font-size:12px">
+                <span style="color:var(--text-2)">AI Narrator</span>
+                <span style="color:var(--text)">Gemini Flash (free tier)</span>
+              </div>
+              <div style="display:flex;justify-content:space-between;padding:6px 0;font-size:12px">
+                <span style="color:var(--text-2)">Frontend</span>
+                <span style="color:var(--text)">Vanilla HTML · CSS · JS</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- API status card -->
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:12px">API Status</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+              <div id="settings-health-dot" style="width:8px;height:8px;border-radius:50%;background:var(--teal)"></div>
+              <span style="font-size:12px;color:var(--text-2)">Backend connected</span>
+            </div>
+            <div style="font-size:11px;color:var(--text-3)">
+              Endpoints: /upload · /clean · /stats · /outliers · /train · /predict · /chat · /export
+            </div>
+          </div>
+
+          <!-- Supported formats -->
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:12px">Supported File Formats</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <span style="font-size:12px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text-2)">.csv</span>
+              <span style="font-size:12px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text-2)">.xlsx</span>
+              <span style="font-size:12px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text-2)">.xls</span>
+              <span style="font-size:12px;background:var(--surface-2);border:0.5px solid var(--border);border-radius:8px;padding:5px 12px;color:var(--text-2)">.json</span>
+            </div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:8px">Max file size: 50 MB</div>
+          </div>
+
+          <!-- Built by -->
+          <div style="background:var(--surface);border:0.5px solid var(--border);border-radius:12px;padding:16px">
+            <div style="font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--text-3);margin-bottom:8px">Built by</div>
+            <div style="font-size:13px;color:var(--text)">Swapnil Patil</div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:2px">Internship Project · 2026</div>
+            <a href="https://github.com/Swap9035/datalyze" target="_blank"
+               style="display:inline-flex;align-items:center;gap:6px;margin-top:10px;
+                      font-size:12px;color:var(--accent);text-decoration:none">
+              View on GitHub →
+            </a>
+          </div>
+
+        </div>
+      </div>
+
+    </main>
+
+  </div>
+  <div class="toast-container" id="toast-container"></div>
+  <div class="loading-bar" id="loading-bar" style="width:0"></div>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
