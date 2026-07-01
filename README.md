@@ -183,6 +183,6 @@ Built in 16 days (1–2 hrs/day) as an internship project.
 
 ## Built by
 
-**Swapnil Patil** — Internship Project · 2026
+**Swapnil Patil** 
 
 *Data analysis · Machine learning · Full-stack deployment*
