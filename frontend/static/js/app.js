@@ -687,21 +687,40 @@ async function trainModel() {
       return;
     }
     const data = await res.json();
-    state.modelData = data;
 
-    /* Activity feed */
-    addActivity(
-      `Model trained — accuracy: ${data.metrics.accuracy}%`,
-      'teal'
-    );
-    showToast(`Model trained — ${data.metrics.accuracy}% accuracy`, 'teal');
-    pulseButton(predictBtn);
+console.log("TRAIN RESPONSE:", data);
 
-    /* Show model card in chat */
-    showModelCardInChat(data);
+if (data.skipped || !data.metrics) {
+  addActivity(
+    `Model training skipped — ${data.reason}`,
+    'amber'
+  );
 
-    /* Show prediction panel in right sidebar */
-    showPredictionPanel(data);
+  predictBtn.disabled = true;
+
+  showToast(
+    `Prediction unavailable: ${data.reason}`,
+    'amber'
+  );
+
+  return;
+}
+
+state.modelData = data;
+
+/* Activity feed */
+addActivity(
+  `Model trained — accuracy: ${data.metrics.accuracy}%`,
+  'teal'
+);
+
+showToast(
+  `Model trained — ${data.metrics.accuracy}% accuracy`,
+  'teal'
+);
+
+showModelCardInChat(data);
+showPredictionPanel(data);
 
   } catch (err) {
     console.warn('Model training error:', err.message);

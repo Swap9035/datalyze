@@ -235,7 +235,7 @@ def train_model(session_id: str):
             "session_id": session_id,
             "skipped": True,
             "reason": str(e),
-            "metrics": None,
+            "metrics": {},
             "feature_importance": [],
             "confusion_matrix": None,
             "summary": [str(e)],

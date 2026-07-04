@@ -1207,41 +1207,111 @@ function updatePredictionsPage(modelData) {
   const statusEl = document.getElementById('pred-status-content');
   const fiCard   = document.getElementById('pred-fi-card');
   const fiEl     = document.getElementById('pred-fi-content');
-  if (!statusEl || !modelData || !modelData.metrics) return;
+
+  if (!statusEl) return;
+
+  if (
+    !modelData ||
+    modelData.skipped ||
+    !modelData.metrics ||
+    Object.keys(modelData.metrics).length === 0
+  ) {
+    statusEl.innerHTML = `
+      <div style="
+        background:rgba(245,158,11,.08);
+        border:1px solid rgba(245,158,11,.25);
+        border-radius:8px;
+        padding:12px;
+        color:var(--amber);
+        font-size:12px;
+      ">
+        <strong>Prediction unavailable</strong><br>
+        ${modelData?.reason || 'No suitable target column found in this dataset.'}
+      </div>
+    `;
+
+    if (fiCard) fiCard.style.display = 'none';
+    return;
+  }
 
   statusEl.innerHTML = `
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
       ${Object.entries(modelData.metrics).map(([k,v]) => `
-        <div style="background:var(--surface-2);border:0.5px solid var(--border);
-                    border-radius:8px;padding:8px 12px;text-align:center;min-width:70px">
-          <div style="font-size:16px;font-weight:600;color:var(--accent)">${v}%</div>
-          <div style="font-size:9px;color:var(--text-3);text-transform:uppercase;
-                      letter-spacing:.05em;margin-top:2px">${k}</div>
-        </div>`).join('')}
+        <div style="background:var(--surface-2);
+                    border:0.5px solid var(--border);
+                    border-radius:8px;
+                    padding:8px 12px;
+                    text-align:center;
+                    min-width:70px">
+          <div style="font-size:16px;font-weight:600;color:var(--accent)">
+            ${v}%
+          </div>
+          <div style="font-size:9px;color:var(--text-3);
+                      text-transform:uppercase;
+                      letter-spacing:.05em;
+                      margin-top:2px">
+            ${k}
+          </div>
+        </div>
+      `).join('')}
     </div>
-    <div style="font-size:11px;color:var(--text-3)">
-      Trained on ${modelData.train_size} rows · Tested on ${modelData.test_size} rows (80/20 split)
-    </div>`;
 
-  /* Feature importance bars */
+    <div style="font-size:11px;color:var(--text-3)">
+      Trained on ${modelData.train_size} rows ·
+      Tested on ${modelData.test_size} rows
+      (80/20 split)
+    </div>
+  `;
+
   if (fiCard && fiEl && modelData.feature_importance?.length) {
     fiCard.style.display = 'block';
-    const maxAbs = Math.max(...modelData.feature_importance.map(f => f.abs_impact));
-    fiEl.innerHTML = modelData.feature_importance.slice(0, 6).map(f => {
-      const pct   = maxAbs > 0 ? (f.abs_impact / maxAbs * 100).toFixed(1) : 0;
-      const color = f.direction === 'positive' ? 'var(--teal)' : 'var(--red)';
-      const sign  = f.coefficient > 0 ? '+' : '';
-      return `
-        <div style="margin-bottom:8px">
-          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px">
-            <span style="color:var(--text)">${escHtml(f.feature)}</span>
-            <span style="color:${color};font-family:monospace">${sign}${f.coefficient}</span>
+
+    const maxAbs = Math.max(
+      ...modelData.feature_importance.map(f => f.abs_impact)
+    );
+
+    fiEl.innerHTML = modelData.feature_importance
+      .slice(0, 6)
+      .map(f => {
+        const pct = maxAbs > 0
+          ? (f.abs_impact / maxAbs * 100).toFixed(1)
+          : 0;
+
+        const color =
+          f.direction === 'positive'
+            ? 'var(--teal)'
+            : 'var(--red)';
+
+        const sign = f.coefficient > 0 ? '+' : '';
+
+        return `
+          <div style="margin-bottom:8px">
+            <div style="
+              display:flex;
+              justify-content:space-between;
+              font-size:12px;
+              margin-bottom:3px">
+              <span>${escHtml(f.feature)}</span>
+              <span style="color:${color};font-family:monospace">
+                ${sign}${f.coefficient}
+              </span>
+            </div>
+
+            <div style="
+              height:4px;
+              background:var(--surface-3);
+              border-radius:2px">
+              <div style="
+                height:100%;
+                width:${pct}%;
+                background:${color};
+                border-radius:2px">
+              </div>
+            </div>
           </div>
-          <div style="height:4px;background:var(--surface-3);border-radius:2px">
-            <div style="height:100%;width:${pct}%;background:${color};border-radius:2px"></div>
-          </div>
-        </div>`;
-    }).join('');
+        `;
+      })
+      .join('');
   }
 }
 
